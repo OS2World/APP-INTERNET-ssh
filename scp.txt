@@ -1,0 +1,132 @@
+
+
+
+SCP(1)                         SSH                         SCP(1)
+
+
+NAME
+       scp - secure copy (remote file copy program)
+
+
+SYNOPSIS
+       scp   [-aAqQprvBCL1]   [-S path-to-ssh]   [-o ssh-options]
+       [-P port] [-c cipher] [-i identity]
+            [[user@]host1:]filename1...  [[user@]host2:]filename2
+
+
+DESCRIPTION
+       Scp  copies files between hosts on a network.  It uses ssh
+       for data transfer, and uses the  same  authentication  and
+       provides  the  same security as ssh.  Unlike rcp, scp will
+       ask for passwords or passphrases if they  are  needed  for
+       authentication.
+
+       Any file name may contain a host and user specification to
+       indicate that the file is to be copied to/from that  host.
+       Copies between two remote hosts are permitted.
+
+
+OPTIONS
+       -a    Turn on statistics display for each file.
+
+       -A    Turn off statistics display for each file.
+
+       -c cipher
+             Selects  the  cipher  to use for encrypting the data
+             transfer.  This option is directly passed to ssh.
+
+       -i identity_file
+             Selects the file from which  the  identity  (private
+             key) for RSA authentication is read.  This option is
+             directly passed to ssh.
+
+       -L    Use non privileged port. With this  you  cannot  use
+             rhosts   or rsarhosts authentications, but it can be
+             used to bypass some firewalls that dont allow privi-
+             leged  source  ports  to  pass.  Same  as saying "-o
+             UsePriviledgePort=no" or -P to ssh; -L is  used  due
+             to exhaustion of suitable letters.
+
+       -1    Force  scp  to use command "scp1" on the remote side
+             instead of "scp".  This may  be  necessary  in  some
+             situations,  if  the  remote  system has "scp2" sym-
+             linked to "scp".
+
+       -o ssh-options
+             Ssh options passed to ssh.
+
+       -p    Preserves  modification  times,  access  times,  and
+             modes from the original file.
+
+
+
+
+SSH                      November 8, 1995                       1
+
+
+
+
+
+SCP(1)                         SSH                         SCP(1)
+
+
+       -q    Turn off statistics display.
+
+       -Q    Turn on statistics display.
+
+       -r    Recursively copy entire directories.
+
+       -v    Verbose mode.  Causes scp and ssh to print debugging
+             messages about their progress.  This is  helpful  in
+             debugging connection, authentication, and configura-
+             tion problems.
+
+       -B    Selects batch mode (prevents asking for passwords or
+             passphrases).
+
+       -C    Compression  enable.   Passes  the -C flag to ssh to
+             enable compression.
+
+       -P port
+             Specifies the port to connect to on the remote host.
+             Note  that  this option is written with a capital P,
+             because -p is already reserved  for  preserving  the
+             times and modes of the file in rcp.
+
+       -S path-to-ssh
+             Specifies the path to ssh program.
+
+
+ENVIRONMENT VARIABLES
+       You   can  turn  scp  statistics  on  or  off  by  setting
+       SSH_SCP_STATS or SSH_NO_SCP_STATS  environment  variables.
+       To  turn  on  or  off  scp  statistics  for each file, use
+       SSH_ALL_SCP_STATS  or   SSH_NO_ALL_SCP_STATS   environment
+       variables.  The default value of the statistics can be set
+       when the ssh is configured.  Next  the  scp  checks  those
+       environment variables and after that command line options.
+
+
+AUTHORS
+       Timo Rinne <tri@ssh.fi> and Tatu Ylonen <ylo@ssh.fi>
+
+
+DERIVATION
+       Scp is based on the rcp program in BSD  source  code  from
+       the Regents of the University of California.
+
+
+SEE ALSO
+       ssh(1),  sshd(8), ssh-keygen(1), ssh-agent(1), ssh-add(1),
+       rcp(1)
+
+
+
+
+
+
+
+
+SSH                      November 8, 1995                       2
+
+

@@ -1,0 +1,295 @@
+					OS/2 port of Secure Shell + Daemon
+					Andrew Zabolotny, <bit@eltech.ru>
+					Aug, 2000
+
+
+    INTRODUCTION
+    ------------
+
+This is an almost-complete port of SSH to OS/2. Current features include:
+
+-*- Fully working client. If client's stdin/out/err is connected to something
+    other than a terminal, the corresponding stream is switched into binary
+    mode (i.e. `cvs -d :ext:...' works without any additional options).
+
+-*- Fully working server. You can login, execute commands and so on.
+    OS/2 does not have ptys though... well, xf86sup.sys provides 32 pty's
+    but they just don't work, at least with the version I've tried.
+    Thus you will get "server failed to alloc a pty" messages, but
+    it still works without a pty, although worse than it could be.
+    There is a wrapper which, when used as a shell, will provide same
+    level of functionality as the OS/2 telnet daemon, e.g. Vio programs
+    will work through sshd with most terminals that support relatively
+    general ANSI sequences.
+
+-*- Fully working scp. ssh-keygen works as well (surprise! :)
+    Also I have compiled the ssh-askpass tool, this is a XFree86/2
+    program that asks the password in a nice window. ssh automatically
+    launches it if it finds the DISPLAY environment variable.
+
+-*- The SSH client has built-in a very feature-full terminal emulator.
+    Both keyboard and screen output has been designed to mimic as close
+    as possible those for the xterm-color terminal. Well, xterm-color
+    has really LOTS of features, so the ssh's terminal supports just
+    a subset of it, but a substantial subset. Midnight Commander seems
+    to be just happy with it, unlike telnet and telnetpm that comes with
+    IBM TCP/IP. The terminal has a config file where you can configure
+    many things including character translation tables. For more detailed
+    information see the comments inside the ssh_term file.
+
+    The terminal almost completely passes the VTTEST test. That is, it is
+    almost 100% compatible with VT52, VT100 and VT102 terminals; almost
+    every feature of them is supported (one of the major missing features
+    are the double-sized characters, but that's not my fault...).
+
+-*- A transparent path translator, that maps /etc to %ETC%, /tmp to %TMP%
+    or %TEMP%, /dev/null to /dev/nul. This lets you specify "absolute"
+    path names like on Unix and still allow you to keep your config and temp
+    directories wherever you want. For example, when ssh-keygen will ask
+    you where to store the key files, you can specify /etc/ssh_host_key
+    and not worry where exactly the etc directory is.
+
+
+    INSTALLING AND USING SSH CLIENT
+    -------------------------------
+
+First, copy the ssh_term configuration file into your %ETC% directory.
+Usually this is x:\mptn\etc or x:\tcpip\etc. where x: is any drive.
+Now edit this file according to your taste.
+
+Now set the user and the home directory in your config.sys, if you
+didn't it already. The home directory should be on an HPFS drive as
+ssh will create a directory called ".ssh" in it.
+
+	set USER=qwerty
+	set HOME=f:\home\qwerty
+
+Now reboot. After this you can generate your personal identification key.
+Run ssh-keygen. I prefer to run it with -b 2048 switch, so that it will
+generate a 2048-bits key instead of default 768 (paranoia :-). When the
+key will be generated ssh-keygen will ask you where to store the keys.
+Accept the default value.
+
+Well, now you're ready to run ssh. Try to ssh to some site that has the
+ssh daemon installed. If it fails for an unknown reason, try the -v switch.
+
+The OS/2 port of ssh has an additional switch "-tc". It can be used to
+specify an alternate terminal configuration file. There is an file
+ssh_term.os2 provided in this distribution which will set up ssh built-in
+terminal so that it will work better with an OS/2 server running sshd
+(see below how to set up such a server). For example, to log on to an
+OS/2 server you should type:
+
+	ssh -tc /etc/ssh_term.os2 hostname
+
+Also I have provided a file called ssh_term.linux which contains the setup
+to emulate better the "linux" terminal, mostly this is related to keys.
+If the terminal configuration file is called /etc/ssh_term.something you
+can ommit "/etc/ssh_term." prefix, and use just "-tc something", for example
+"-tc linux" or "-tc os2". Also there is a ssh_term.vt102 which sets up for
+the VT52/VT100/VT102 terminal emulation.
+
+Hint: if you are allowed to log to some site, you can create a .ssh directory
+in your home directory on the server, and put your public key (i.e.
+~/.ssh/identity.pub) into a file called authorized_keys. Now you will
+be allowed to log in to that server without being asked for password.
+
+    Terminal keys
+     -----------
+
+Some comments about terminal key codes. I have played hard trying to keep
+happy any application/OS/whatever I have encountered, but of course there
+are still tricks and tips you should know.
+
+First, the built-in terminal emulator does not make difference between
+normal '+', '-', '*', '/' and those on keypad. Instead you should press
+Ctrl+"keypad +" for example to get same behaviour as simple "keypad +".
+
+Second, the built-in terminal emulator honors the DEC private keyboard
+mode switch command, this means that with some programs redefining keys
+"won't work" because if the application sends the \e[?1h sequence the
+arrow keys will always generate \eOA \eOB \eOC \eOD sequence, no matter
+what the settings in config file are. Another sequences that also have
+impact on key translation are \e=, \e< and \e>. They switch keypad
+between "numeric mode" and "application mode". This is implemented
+somewhat kludgy: in "non-numeric mode" cursor keys and pgup/pgdn/home/end
+keys generates some special codes, independently of what you have set
+up in config file. But in general you should not encounter any problems
+with this since if a program enables "application mode" it should know
+what it does, and should expect the respective key codes.
+
+In both above cases pressing Shift+key will ignore current keyboard mode
+and emmit whatever your config file says for that shift+key. Usually
+shift+key has same effect as simply "key" for pgup/pgdn/home/end keys
+thus you may try pressing those keys with "shift" if application doesn't
+seem to handle correctly the "correct" keys.
+
+    SSH and X-Windows
+     ---------------
+
+Like in Unix, if you have XFree86/2 installed, ssh will redirect remote machine
+to display X-Windows programs on your display. If ssh detects the $DISPLAY
+environment variable, xauth.exe is launched with respective parameters
+(it should be available along PATH), and sets the DISPLAY variable on remote
+host to the respective value, so that X programs launched on remote machine
+will use the X-server on your machine.
+
+
+    INSTALLING AND USING SSH SERVER (SSHD)
+    --------------------------------------
+
+The sshd for os2 is functional, although not too full of features :-)
+On Unix systems sshd uses pseudo-terminals (ptty's) to emulate a "virtual
+terminal" on which logged in user launches programs. I've disabled pty
+support at all because with xf86sup.sys you will get a completely deaf
+system as soon as you log in :-(
+
+If you don't have xf86sup.sys driver installed, you will get a message saying
+that sshd failed to allocate a pseudo-tty. Don't worry, this is normal.
+
+Also for debugging you can try running sshd with the "-d" switch. This gives
+lots of debugging information, and the daemon will terminate after one session.
+(NB: sshd -d hangs for some reason on exit with some programs, e.g. scp: this
+happens on the latest fprintf(stderr, ...) thus its not a problem for normal
+usage; also if sshd is linked without -Zcrtdll this also doesn't happen).
+
+A potential problem are shells that do not echo back the characters as they
+are passed in. With such shells you will get just the prompt, and you won't
+see anything you type either until you press Enter (as with CMD.EXE) or nothing
+at all (as with ash port). I didn't tried 4OS/2. Programs and shells that use
+GNU readline library (including bash) will work normally as they process input
+character by character and echo incoming characters instantly back.
+
+First of all you will need to generate the /etc/ssh_host_key file. This can
+be accomplished by running the following command:
+
+	ssh-keygen -b 2048 -N "" -f /etc/ssh_host_key
+
+Note the <-N ""> switch: the host key should never be encrypted using a
+password. If you don't specify the -N switch, just press <Enter> when
+ssh-keygen will ask you about the password.
+
+Also some nice things to know about sshd:
+
+	/etc/motd
+	file can contain something nice to output upon logging on
+	to the server. A welcome message, server usage rules and so on.
+
+	/etc/nologin
+	If this file is present, login will not be allowed. Instead,
+	the contents of this file will be sent to the client and session
+	closed.
+
+	/etc/sshrc
+	~/.ssh/rc
+	These can be some shell scripts that will be automatically executed
+	when you log on. Unfortunately CMD.EXE can't do it.
+
+	/etc/environment
+	~/.ssh/environment
+	This can be a file that can contain a number of VARIABLE=VALUE
+	lines. These variables will be added to your environment.
+
+To allow multiple different users with different password the OS/2 port of
+SSHD has a built-in parser for Unix-like passwd files. The file format is
+as follows:
+
+userid:paswd:uid:gid:desc:home:shell
+  |      |    |   |    |   |     +-> The shell used when user logs in.
+  |      |    |   |    |   +-------> The home user directory
+  |      |    |   |    +-----------> User description
+  |      |    |   +----------------> Numerical Group ID (unused on OS/2)
+  |      |    +--------------------> Numerical User ID
+  |      +-------------------------> Scrambled password
+  +--------------------------------> String user ID
+
+Example:
+
+andy:nA33cZjcVKBgc:1001:0:Andrew Zabolotny:$f/home/andy:$e/usr/bin/bash
+
+Note the notation needed to avoid usage of ':' characters in strings:
+if home directory or shell name starts with '$', the next character
+is interpreted as a drive name, thus "$a" is replaced by "a:".
+
+For easier password database management a simple tool called "user"
+is provided. The source code for it is in ${SSH}/os2 directory, you
+may rebuild it using the provided makefile (you will need the UFC
+library or use the ${SSH}crypt.c module instead). For a short description
+of all supported options just run "user". For example, to add a user you do:
+
+	user --add andyz
+
+to remove a user, you do:
+
+	user --remove andyz
+
+to change the password for a user, you do:
+
+	user --change andyz
+
+The default values for newly-added users are:
+
+	userid	- you provide
+	paswd	- you provide
+	uid	- first unused starting from 100
+	gid	- same as uid
+	desc	- empty
+	home	- ${home}/${userid} where ${home} is the path taken from
+		  ${HOME} environment variable minus the last component.
+	shell	- either ${SHELL} or ${EMX_SHELL} or ${COMSPEC}
+
+-*-
+
+If you want to run full-screen VIO programs (such as File Commander etc)
+through ssh you will need to make a special setup for given user: his shell
+should be "tnpipe.exe". This is a special program which launches TELNETDC.EXE
+(which comes with IBM TCP/IP) and redirects all input and output of TELNETDC
+to sshd. Thus, the line for a user that wishes to use full-screen VIO programs
+could look like this:
+
+	test:UkGfAuD60Pabg:101:101::$f/home:tnpipe.exe
+
+When the user will log on, he will see the usual CMD.EXE prompt. But this time
+when he'll run some VIO program, it will really work. Note that you cannot
+DETACH the sshd daemon, otherwise it won't be able to launch a full-screen
+session. Start the sshd like this: "start /min /n sshd.exe", then you may
+remove it from window list with a program like "nolist".
+
+For better results, if you're connecting from an OS/2 machine using ssh, you
+should use the /etc/ssh_term.os2 configuration file for the built-in terminal,
+otherwise you will get bad and sometimes very bad output.
+
+If you logged on with a shell different from tnpipe, don't worry. You still
+can use VIO programs, but you will have first to launch tnpipe.exe manually
+(directly in the ssh session).
+
+
+    POTENTIAL PROBLEMS
+    ------------------
+
+If you get messages like this from tnpipe:
+
+Error running `telnetdc 127 "" E:\USR\BIN\TNPIPE.EXE' (Invalid argument)
+
+this means that the sshd is running as a detached process. Also there is a
+EMX limit that the first ssh interactive session gets a VIO console and
+the others won't (this is somehow related to fork()). That is, there is a
+limit to one (1) interactive VIO session running at any time :-( Sorry,
+I had no time nor wish to find what's up but it seems related to EMX
+or even OS/2 internals. The second fork'ed process cannot spawn a
+fullscreen session (it seems to be DETACH'ed), that's it in two words.
+
+
+    THANKS
+    ------
+
+And finally, I would like to thank the following people:
+
+	Konstantin Okounkov, who wrote a homepage for ssh/2
+	  (http://os2.ru/materials/internet/sshd.shtml.en)
+
+	Stepan Kazakov, who provided feedback, ideas and info
+	  on IBM telnet daemon.
+
+	Dmitry Kubov, who provided hints and fixes for the
+          built-in ssh terminal emulator.
