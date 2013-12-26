@@ -1,0 +1,24 @@
+# This is a terminal configuration file for SSH/2
+# which sets up terminal emulator such that it emulates as close
+# as possible the VT52/VT102/VT220 terminals. Use the "-tc vt220" switch
+# to use this file instead of the default /etc/ssh_term. You also
+# may want to use an 80x24 or 132x24 OS/2 console window since many
+# programs will assume this size.
+
+term vt220
+bell 3000 30
+backspace-sends backspace
+
+key f1 "\eOP" f2 "\eOQ" f3 "\eOR" f4 "\eOS" f5 "\e[17~"
+key f6 "\e[18~" f7 "\e[19~" f8 "\e[20~" f9 "\e[21~" f10 "\e[29~"
+
+# Enable the following lines if you want Cyrillic letters to be translated
+# from KOI8-R character set. You may want to use translation if your SSHD
+# daemon is set up for connection with both Unix and OS/2 clients; in this
+# cases tnpipe_config will tell to convert from OS/2 to Unix encoding,
+# and this config file will perform the reverse translation
+
+# The KOI-8R cyrillic letter encoding
+#translate-from "áâ÷çäåöúéêëìíîïğòóôõæèãşûıÿùøüàñÁÂ×ÇÄÅÖÚÉÊËÌÍÎÏĞ°±²³´µ¶·¸¹º»¼½¾¿€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸÒÓÔÕÆÈÃŞÛİßÙØÜÀÑ                "
+# The target encoding (codepage 866)
+#translate-to   "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"

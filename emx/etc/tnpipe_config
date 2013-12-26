@@ -1,0 +1,66 @@
+#
+# This is a sample configuration file for tnpipe, the telnetd->sshd pipe tool.
+# Put it into your ${ETC} directory, and change according to your taste/needs.
+#
+# General syntax for a line is:
+#
+# [Keyword] [Value]
+#
+# Lines that start with the '#' character are completely ignored.
+# The character case does not matter in keyword (and does in `value').
+# When keyword is said to accept a string value, you should provide either
+# a double-quoted string (i.e. "string") or, if your string does not contain
+# space and tab characters, you can omit the quotes. The quoted strings
+# can contain C-like quoted characters: \n, \r, \t, \xhexval, \\, \"
+#
+# The following keywords are recognized:
+#
+# init-script [string]
+#   Define the telnetd session initialization script. Equal to empty string
+#   by default. This script is run by telnetdc.exe in the newly created
+#   telnet session. You can set environment variables and run any program
+#   you like from there. The TCPIP\BIN directory contains a sample session
+#   initialization script called TELNETD.CMD; however it does not contain
+#   anything useful for sshd sessions thus it is not used by default.
+#
+# translate-from [string]
+#   Set source character translation string.
+#
+# translate-to [string]
+#   Set target character translation string. As characters are emmited
+#   to the screen, every character found in [translate-from] string is
+#   replaced by the character in corresponding place in [translate-to]
+#   string. Thus, the following statements:
+#     translate-from "abcdefghijklmnopqrstuvwxyz"
+#     translate-to "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#   will tell the terminal emulator to replace all lower-case latin
+#   characters with their respective upper-case counterpart.
+#   Note that the translation table has inverse meaning as well, i.e.
+#   characters read from stdin and found in the [translate-to] string
+#   will be replaced by respective characters in the [translate-from]
+#   table. Thus, the direction of encoding can be represented as:
+#
+#                        from ---<---<---<---<--- to
+#                  [os/2-server]----------[remote-client]
+#                        from --->--->--->--->--- to
+#
+#   The only character that has special meaning is space: space cannot
+#   be encoded any way: neither from->to or to->from. You still can
+#   translate a character into space, but not vice versa.
+#
+
+# Session initialization script
+#init-script telnetd.cmd
+
+#---------------------------- Translation tables -------------------------------
+
+# The source encoding (OS/2 codepage 866)
+#translate-from "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"
+# The KOI-8R cyrillic letter encoding
+#translate-to   "áâ÷çäåöúéêëìíîïğòóôõæèãşûıÿùøüàñÁÂ×ÇÄÅÖÚÉÊËÌÍÎÏĞ°±²³´µ¶·¸¹º»¼½¾¿€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸÒÓÔÕÆÈÃŞÛİßÙØÜÀÑ                "
+# The so-called Bolgarian cyrillic letter encoding
+#translate-to   "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯ĞÑÒÓÔ àáâÆÇ×ØãäÏÀÁÂÃÄÅåæÈÉÊËÌÍÎçèéêëìíîïÖÙÚÛÜİŞß°±²³´µ¶·¸¹º»¼½¾¿ğñòóôõö÷øùúûüışÿ"
+# The so-called GOST cyrillic letter encoding
+#translate-to   "°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞß›œ¥§ƒ„…†—•‘’‹Œ¡£¨¦©¤ª“˜–™”š€‚‡ˆ‰ŠŸ¢ «¬­®¯àáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"
+# The Windows codepage 1251 cyrillic letter encoding
+#translate-to   "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîï                                                ğñòóôõö÷øùúûüışÿ                "

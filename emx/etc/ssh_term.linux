@@ -1,0 +1,21 @@
+# This is a terminal configuration file for SSH/2
+# which sets up ssh so that you can connect an remote Linux host
+# as if you were using an Linux terminal (instead of default xterm-color)
+# Use the "-tc linux" switch to use this file instead
+# of the default /etc/ssh_term.
+
+term linux
+bell 3000 30
+backspace-sends backspace
+
+key f1 "\e[[A" f2 "\e[[B" f3 "\e[[C" f4 "\e[[D" f5 "\e[[E"
+key home "\e[1~" end "\e[4~" pgup "\e[5~" pgdn "\e[6~"
+key center "\e[G"
+
+# Enable the following to translate from Unix cyrillic encoding to
+# OS/2 codepage 866 (default Cyrillic codepage in OS/2)
+
+# The KOI-8R cyrillic letter encoding
+#translate-from "áâ÷çäåöúéêëìíîïğòóôõæèãşûıÿùøüàñÁÂ×ÇÄÅÖÚÉÊËÌÍÎÏĞ°±²³´µ¶·¸¹º»¼½¾¿€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸÒÓÔÕÆÈÃŞÛİßÙØÜÀÑ                "
+# The target encoding (codepage 866)
+#translate-to   "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"

@@ -1,0 +1,121 @@
+#
+# This is a sample configuration file for ssh/2 built-in terminal emulator.
+# Put it into your ${ETC} directory, and change according to your taste/needs.
+#
+# General syntax for a line is:
+#
+# [Keyword] [Value]
+#
+# Lines that start with the '#' character are completely ignored.
+# The character case does not matter in keyword (and does in `value').
+# When keyword is said to accept a string value, you should provide either
+# a double-quoted string (i.e. "string") or, if your string does not contain
+# space and tab characters, you can omit the quotes. The quoted strings
+# can contain C-like quoted characters: \n, \r, \t, \xhexval, \\, \"
+#
+# The following keywords are recognized:
+#
+# key [key-id] [value]
+#   Define a string to be emitted when user presses some key.
+#   [key-id] is a combination of "ctrl", "alt", "shift" modifiers,
+#   a plus sign and a key designator.
+#   The following key names are defined:
+#     a..z, 0..9, enter, bs (for backspace), f1..f12,
+#     home, end, pgup, pgdn, center, ins, del, tab, space, prtsc,
+#     pad+, pad-, pad*, pad/, padenter, up, down, left, right,
+#     +, -, *, /, \, [, ], ;, ', ,, ., /, `.
+#   Not all key combinations are valid (i.e. "ctrl+prtsc" is accepted,
+#   while "alt+prtsc" is rejected).
+#   [value] is a string (see above the rules for strings).
+#
+# translate-from [string]
+#   Set source character translation string.
+#
+# translate-to [string]
+#   Set target character translation string. As characters are emmited
+#   to the screen, every character found in [translate-from] string is
+#   replaced by the character in corresponding place in [translate-to]
+#   string. Thus, the following statements:
+#     translate-from "abcdefghijklmnopqrstuvwxyz"
+#     translate-to "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#   will tell the terminal emulator to replace all lower-case latin
+#   characters with their respective upper-case counterpart.
+#   Note that the translation table has inverse meaning as well, i.e.
+#   characters read from stdin and found in the [translate-to] string
+#   will be replaced by respective characters in the [translate-from]
+#   table. Thus, the direction of encoding can be represented as:
+#
+#                        to ---<---<---<---<--- from
+#                [os/2-workstation]----------[remote-server]
+#                        to --->--->--->--->--- from
+#
+#   The only character that has special meaning is space: space cannot
+#   be encoded any way: neither from->to or to->from. You still can
+#   translate a character into space, but not vice versa.
+#   Please keep in mind that escape sequences (i.e. those that you define
+#   the `key' keyword) do not pass through the translation mechanism.
+#
+# term [string]
+#   Tell remote that you have terminal type [string]. By default ssh passes
+#   the value of TERM environment variable; however most often you will want
+#   to override the environment variable because of ssh's internal terminal
+#   emulator that has lots more features than "ansi" or "os2" terminal that
+#   most os/2 users have TERM set to. The emulated terminal is a subset of
+#   "xterm-color" terminal, thus this is the default term setting.
+#
+# bell [number] [number]
+#   Define default bell pitch/duration. The first number is frequency
+#   in hertz, second is duration in 1/1000 seconds (i.e. milliseconds).
+#   If you want no bell, set to 0 0. Default bell is 750 125.
+#
+# backspace-sends [string]
+#   Set the character sent by backspace key. Normally an X-Term sends
+#   the <delete> character (code 127); however most other terminals
+#   send <backspace> (code 8). The string can be equal to either
+#   "backspace", "bs", "delete", "del".
+#
+
+# Terminal type
+term xterm-color
+
+# Bell frequency/duration
+bell 3000 30
+
+# The code for <backspace> key: either "backspace" or "delete"
+backspace-sends backspace
+
+# Save/restore attribute on save/restore cursor position sequence?
+# Some ugly telnet servers (e.g. OS/2 telnetd) don't like this.
+save-cursor-attr on
+
+# Honor DEC VT52/ANSI keypad mode switch? This option enables or disables
+# switching the keypad from/to "numeric/application mode" (most cursor keys
+# work differently than defined in terminal configuration file in this mode).
+# Normally applications should not have problems with this, but if you want
+# your definitions for cursor keys always work like you defined here,
+# disable this option. Keep in mind though that disabling this option
+# CAN cause problems as well as resolving them.
+allow-keypad-switch on
+
+# Some people likes underline color different that blue :-)
+underline-color 1
+
+#-- Key redefinition examples
+
+# Linux terminal-like functional keys
+#key f1 "\e[[A" f2 "\e[[B" f3 "\e[[C" f4 "\e[[D" f5 "\e[[E"
+# Bind alt+function keys to something useful
+#key alt+f1 "ls -la" alt+f2 "mount -t vfat /dev/fd0 /mnt/floppy"
+
+#---------------------------- Translation tables -------------------------------
+
+# The so-called Bolgarian cyrillic letter encoding
+#translate-from "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯ĞÑÒÓÔ àáâÆÇ×ØãäÏÀÁÂÃÄÅåæÈÉÊËÌÍÎçèéêëìíîïÖÙÚÛÜİŞß°±²³´µ¶·¸¹º»¼½¾¿ğñòóôõö÷øùúûüışÿ"
+# The so-called GOST cyrillic letter encoding
+#translate-from "°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞß›œ¥§ƒ„…†—•‘’‹Œ¡£¨¦©¤ª“˜–™”š€‚‡ˆ‰ŠŸ¢ «¬­®¯àáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"
+# The Windows codepage 1251 cyrillic letter encoding
+#translate-from "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîï                                                ğñòóôõö÷øùúûüışÿ                "
+# The KOI-8R cyrillic letter encoding
+#translate-from "áâ÷çäåöúéêëìíîïğòóôõæèãşûıÿùøüàñÁÂ×ÇÄÅÖÚÉÊËÌÍÎÏĞ°±²³´µ¶·¸¹º»¼½¾¿€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸÒÓÔÕÆÈÃŞÛİßÙØÜÀÑ                "
+# The target encoding (codepage 866)
+#translate-to   "€‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ"

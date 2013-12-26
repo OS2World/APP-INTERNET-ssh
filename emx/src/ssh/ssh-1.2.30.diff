@@ -1,0 +1,1796 @@
+diff -ru ssh-1.2.30.org/authfd.c ssh-1.2.30/authfd.c
+--- ssh-1.2.30.org/authfd.c	Wed Jul  5 15:26:44 2000
++++ ssh-1.2.30/authfd.c	Mon Aug 21 20:49:50 2000
+@@ -230,6 +230,7 @@
+         }
+     }
+ 
++#if !defined (__OS2__)
+   /* Check if we are suid process */
+   if (original_real_uid != geteuid())
+     {
+@@ -354,6 +355,7 @@
+       /* Note! here we are still at the newly created directory, so the connect
+          will use the hard link of socket instead of real socket */
+     }
++#endif
+ 
+   sunaddr.sun_family = AF_UNIX;
+   strncpy(sunaddr.sun_path, authsocket, sizeof(sunaddr.sun_path));
+diff -ru ssh-1.2.30.org/clientloop.c ssh-1.2.30/clientloop.c
+--- ssh-1.2.30.org/clientloop.c	Wed Jul  5 15:26:46 2000
++++ ssh-1.2.30/clientloop.c	Mon Aug 21 20:49:50 2000
+@@ -262,7 +262,7 @@
+       enter_non_blocking();
+ 
+       /* Check for immediate EOF on stdin. */
+-      len = read(fileno(stdin), buf, 1);
++      len = tty_read(fileno(stdin), buf, 1);
+       if (len == 0)
+         {
+           /* EOF.  Record that we have seen it and send EOF to server. */
+@@ -316,7 +316,7 @@
+         case SSH_SMSG_STDERR_DATA:
+           data = packet_get_string(&data_len);
+           buffer_append(&stderr_buffer, data, data_len);
+-          stdout_bytes += data_len;
++          stderr_bytes += data_len;
+           memset(data, 0, data_len);
+           xfree(data);
+           break;
+@@ -423,7 +423,11 @@
+ {
+ #ifdef SIGWINCH
+   /* Send possible window change message to the server. */
++#if defined (__OS2__)
++  if (tty_size_changed ())
++#else
+   if (received_window_change_signal)
++#endif
+     {
+       struct winsize ws;
+ 
+@@ -431,7 +435,7 @@
+       received_window_change_signal = 0;
+ 
+       /* Read new window size. */
+-      if (ioctl(fileno(stdin), TIOCGWINSZ, &ws) >= 0)
++      if (tty_ioctl(fileno(stdin), TIOCGWINSZ, &ws) >= 0)
+         {
+           /* Successful, send the packet now. */
+           packet_start(SSH_CMSG_WINDOW_SIZE);
+@@ -515,11 +519,11 @@
+ 
+   /* Flush stdout and stderr buffers. */
+   if (buffer_len(&stdout_buffer) > 0)
+-    write(fileno(stdout), 
++    tty_write(fileno(stdout), 
+           buffer_ptr(&stdout_buffer), 
+           buffer_len(&stdout_buffer));
+   if (buffer_len(&stderr_buffer) > 0)
+-    write(fileno(stderr), 
++    tty_write(fileno(stderr), 
+           buffer_ptr(&stderr_buffer), 
+           buffer_len(&stderr_buffer));
+ 
+@@ -534,16 +538,18 @@
+ 
+ #ifdef SIGWINCH
+   /* Save old window size. */
+-  ioctl(fileno(stdin), TIOCGWINSZ, &oldws);
++  tty_ioctl(fileno(stdin), TIOCGWINSZ, &oldws);
+ #endif /* SIGWINCH */
+ 
+   /* Send the suspend signal to the program
+      itself. */
++#ifdef SIGTSTP
+   kill(getpid(), SIGTSTP);
++#endif
+ 
+ #ifdef SIGWINCH
+   /* Check if the window size has changed. */
+-  if (ioctl(fileno(stdin), TIOCGWINSZ, &newws) >= 0 &&
++  if (tty_ioctl(fileno(stdin), TIOCGWINSZ, &newws) >= 0 &&
+       (oldws.ws_row != newws.ws_row || oldws.ws_col != newws.ws_col ||
+        oldws.ws_xpixel != newws.ws_xpixel || 
+        oldws.ws_ypixel != newws.ws_ypixel))
+@@ -607,7 +613,7 @@
+   if (FD_ISSET(fileno(stdin), readset))
+     {
+       /* Read as much as possible. */
+-      len = read(fileno(stdin), buf, sizeof(buf));
++      len = tty_read(fileno(stdin), buf, sizeof(buf));
+       if (len <= 0)
+         {
+           /* Received EOF or error.  They are treated similarly,
+@@ -799,7 +805,7 @@
+   if (FD_ISSET(fileno(stdout), writeset))
+     {
+       /* Write as much data as possible. */
+-      len = write(fileno(stdout), buffer_ptr(&stdout_buffer),
++      len = tty_write(fileno(stdout), buffer_ptr(&stdout_buffer),
+                   buffer_len(&stdout_buffer));
+       if (len <= 0)
+         {
+@@ -825,7 +831,7 @@
+   if (FD_ISSET(fileno(stderr), writeset))
+     {
+       /* Write as much data as possible. */
+-      len = write(fileno(stderr), buffer_ptr(&stderr_buffer),
++      len = tty_write(fileno(stderr), buffer_ptr(&stderr_buffer),
+                   buffer_len(&stderr_buffer));
+       if (len <= 0)
+         if (errno == EAGAIN || errno == EWOULDBLOCK)
+@@ -966,7 +972,7 @@
+   /* Output any buffered data for stdout. */
+   while (buffer_len(&stdout_buffer) > 0)
+     {
+-      len = write(fileno(stdout), buffer_ptr(&stdout_buffer), 
++      len = tty_write(fileno(stdout), buffer_ptr(&stdout_buffer), 
+                   buffer_len(&stdout_buffer));
+       if (len <= 0)
+         {
+@@ -979,7 +985,7 @@
+   /* Output any buffered data for stderr. */
+   while (buffer_len(&stderr_buffer) > 0)
+     {
+-      len = write(fileno(stderr), buffer_ptr(&stderr_buffer), 
++      len = tty_write(fileno(stderr), buffer_ptr(&stderr_buffer), 
+                   buffer_len(&stderr_buffer));
+       if (len <= 0)
+         {
+diff -ru ssh-1.2.30.org/configure.in ssh-1.2.30/configure.in
+--- ssh-1.2.30.org/configure.in	Wed Jul  5 15:27:26 2000
++++ ssh-1.2.30/configure.in	Mon Aug 21 21:14:08 2000
+@@ -305,6 +305,13 @@
+     # pw_passwd automatically when running as root.
+     no_shadow_password_checking=yes
+     ;;
++  *-*-os2*)
++    CFLAGS="$CFLAGS -Ios2"
++    LIBS="$LIBS -lgcc"
++    LIBOBJS="$LIBOBJS os2/files.o os2/passwd.o"
++    SSHCONFOBJS="$SSHCONFOBJS os2/term.o"
++    SSHDCONFOBJS="$SSHDCONFOBJS os2/syslog.o"
++    ;;
+   *)
+     ;;
+ esac
+diff -ru ssh-1.2.30.org/gmp-2.0.2-ssh-2/mpn/x86/syntax.h ssh-1.2.30/gmp-2.0.2-ssh-2/mpn/x86/syntax.h
+--- ssh-1.2.30.org/gmp-2.0.2-ssh-2/mpn/x86/syntax.h	Tue Oct 29 23:02:54 1996
++++ ssh-1.2.30/gmp-2.0.2-ssh-2/mpn/x86/syntax.h	Mon Aug 21 20:50:06 2000
+@@ -35,11 +35,15 @@
+ #define INSN2(mnemonic,size_suffix,dst,src)mnemonic/**/size_suffix src,dst
+ #endif
+ #define TEXT .text
++#if defined (__EMX__)
++#define ALIGN(log) .align log,0x90
++#else
+ #if defined (BSD_SYNTAX)
+ #define ALIGN(log) .align log
+ #endif
+ #if defined (ELF_SYNTAX)
+ #define ALIGN(log) .align 1<<(log)
++#endif
+ #endif
+ #define GLOBL .globl
+ #endif
+diff -ru ssh-1.2.30.org/includes.h ssh-1.2.30/includes.h
+--- ssh-1.2.30.org/includes.h	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/includes.h	Mon Aug 21 20:50:06 2000
+@@ -161,6 +161,10 @@
+ #include <endian.h>
+ #endif
+ 
++#if defined(__EMX__) || defined (__OS2__)
++#include "ssh-os2.h"
++#endif
++
+ #include <stdio.h>
+ #include <ctype.h>
+ #include <sys/stat.h>
+@@ -378,6 +382,17 @@
+   (sizeof((unaddr).sun_family) + strlen((unaddr).sun_path) + 1)
+ #else
+ #define AF_UNIX_SIZE(unaddr) sizeof(unaddr)
++#endif
++
++/* On some platforms we may want to emulate the TTY */
++#ifndef tty_read
++#define tty_read read
++#endif
++#ifndef tty_write
++#define tty_write write
++#endif
++#ifndef tty_ioctl
++#define tty_ioctl ioctl
+ #endif
+ 
+ #define SUPPORT_OLD_CHANNELS
+diff -ru ssh-1.2.30.org/log-server.c ssh-1.2.30/log-server.c
+--- ssh-1.2.30.org/log-server.c	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/log-server.c	Mon Aug 21 20:50:06 2000
+@@ -65,7 +65,9 @@
+  */
+ 
+ #include "includes.h"
++#if !defined (__OS2__)
+ #include <syslog.h>
++#endif
+ #ifdef NEED_SYS_SYSLOG_H
+ #include <sys/syslog.h>
+ #endif /* NEED_SYS_SYSLOG_H */
+diff -ru ssh-1.2.30.org/Makefile.in ssh-1.2.30/Makefile.in
+--- ssh-1.2.30.org/Makefile.in	Wed Jul  5 15:26:54 2000
++++ ssh-1.2.30/Makefile.in	Mon Aug 21 21:23:10 2000
+@@ -418,7 +418,7 @@
+ 	$(CC) -o rfc-pg rfc-pg.o
+ 
+ .c.o:
+-	$(CC) -c -I. $(KERBEROS_INCS) -I$(srcdir)/$(GMPDIR) -I$(srcdir)/$(ZLIBDIR) $(DEFS) -DHOST_KEY_FILE=\"$(HOST_KEY_FILE)\" -DHOST_CONFIG_FILE=\"$(HOST_CONFIG_FILE)\" -DSERVER_CONFIG_FILE=\"$(SERVER_CONFIG_FILE)\" -DSSH_PROGRAM=\"$(SSH_PROGRAM)\" -DETCDIR=\"$(etcdir)\" -DPIDDIR=\"$(piddir)\" -DSSH_BINDIR=\"$(bindir)\" -DTIS_MAP_FILE=\"$(TIS_MAP_FILE)\" $(CFLAGS) $(X_CFLAGS) $<
++	$(CC) -c -o $@ -I. $(KERBEROS_INCS) -I$(srcdir)/$(GMPDIR) -I$(srcdir)/$(ZLIBDIR) $(DEFS) -DHOST_KEY_FILE=\"$(HOST_KEY_FILE)\" -DHOST_CONFIG_FILE=\"$(HOST_CONFIG_FILE)\" -DSERVER_CONFIG_FILE=\"$(SERVER_CONFIG_FILE)\" -DSSH_PROGRAM=\"$(SSH_PROGRAM)\" -DETCDIR=\"$(etcdir)\" -DPIDDIR=\"$(piddir)\" -DSSH_BINDIR=\"$(bindir)\" -DTIS_MAP_FILE=\"$(TIS_MAP_FILE)\" $(CFLAGS) $(X_CFLAGS) $<
+ 
+ sshd: $(SSHD_OBJS) $(GMPDEP) $(RSAREFDEP) $(ZLIBDEP)
+ 	-rm -f sshd
+diff -ru ssh-1.2.30.org/newchannels.c ssh-1.2.30/newchannels.c
+--- ssh-1.2.30.org/newchannels.c	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/newchannels.c	Mon Aug 21 20:50:06 2000
+@@ -2430,10 +2430,12 @@
+   
+   umask(old_umask);
+   
++#if !defined (__OS2__)
+   if (directory_created)
+     if (chown(".", pw->pw_uid, pw->pw_gid) < 0)
+       packet_disconnect("Agent socket directory chown failed: %.100s",
+                         strerror(errno));
++#endif
+ 
+   /* Start listening on the socket. */
+   if (listen(sock, 5) < 0)
+diff -ru ssh-1.2.30.org/packet.c ssh-1.2.30/packet.c
+--- ssh-1.2.30.org/packet.c	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/packet.c	Mon Aug 21 20:50:06 2000
+@@ -833,7 +833,7 @@
+     {
+       /* Set IP options for an interactive connection.  Use IPTOS_LOWDELAY
+          and TCP_NODELAY. */
+-#ifdef IPTOS_LOWDELAY
++#if defined (IPTOS_LOWDELAY) && !defined (__OS2__)
+       int lowdelay = IPTOS_LOWDELAY;
+       if (setsockopt(connection_in, IPPROTO_IP, IP_TOS, (void *)&lowdelay, 
+                      sizeof(lowdelay)) < 0)
+@@ -849,7 +849,7 @@
+     {
+       /* Set IP options for a non-interactive connection.  Use 
+          IPTOS_THROUGHPUT. */
+-#ifdef IPTOS_THROUGHPUT
++#if defined (IPTOS_THROUGHPUT) && !defined (__OS2__)
+       int throughput = IPTOS_THROUGHPUT;
+       if (setsockopt(connection_in, IPPROTO_IP, IP_TOS, (void *)&throughput, 
+                      sizeof(throughput)) < 0)
+diff -ru ssh-1.2.30.org/pty.c ssh-1.2.30/pty.c
+--- ssh-1.2.30.org/pty.c	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/pty.c	Mon Aug 21 20:50:06 2000
+@@ -482,6 +482,11 @@
+ #else                   /* not SCO UNIX */
+   char buf[64];
+   int i;
++#ifdef __OS2__
++  /* XFree86sup driver provides 32 pttys */
++  const char *ptymajors = "PQ";
++  const char *ptyminors = "0123456789ABCDEF";
++#else
+ #ifdef __FreeBSD__
+   const char *ptymajors = "pqrsPQRS";
+   const char *ptyminors = "0123456789abcdefghijklmnopqrstuv";
+@@ -490,9 +495,15 @@
+     "pqrstuvwxyzabcdefghijklmnoABCDEFGHIJKLMNOPQRSTUVWXYZ";
+   const char *ptyminors = "0123456789abcdef";
+ #endif
++#endif
+   int num_minors = strlen(ptyminors);
+   int num_ptys = strlen(ptymajors) * num_minors;
+ 
++#if defined (__OS2__)
++  /* until xf86sup will have working ptys... */
++  return 0;
++#endif
++
+   for (i = 0; i < num_ptys; i++)
+     {
+       snprintf(buf, sizeof(buf), "/dev/pty%c%c", ptymajors[i / num_minors], 
+@@ -539,16 +550,19 @@
+ 
+ void pty_release(const char *ttyname)
+ {
++#if !defined (__OS2__)
+   if (chown(ttyname, (uid_t)UID_ROOT, (gid_t)0) < 0)
+     debug("chown %.100s 0 0 failed: %.100s", ttyname, strerror(errno));
+   if (chmod(ttyname, (mode_t)0666) < 0)
+     debug("chmod %.100s 0666 failed: %.100s", ttyname, strerror(errno));
++#endif
+ }
+ 
+ /* Makes the tty the processes controlling tty and sets it to sane modes. */
+ 
+ void pty_make_controlling_tty(int *ttyfd, const char *ttyname)
+ {
++#if !defined (__OS2__)
+   int fd;
+ 
+   /* First disconnect from the old controlling tty. */
+@@ -613,6 +627,7 @@
+       *ttyfd = fd;
+ #endif /* HAVE_VHANGUP && !HAVE_REVOKE */
+     }
++#endif /* !__OS2__ */
+ }
+ 
+ /* Changes the window size associated with the pty. */
+@@ -626,7 +641,6 @@
+   w.ws_col = col;
+   w.ws_xpixel = xpixel;  
+   w.ws_ypixel = ypixel;
+-  (void)ioctl(ptyfd, TIOCSWINSZ, &w);
++  (void)tty_ioctl(ptyfd, TIOCSWINSZ, &w);
+ #endif /* SIGWINCH */
+ }
+-
+diff -ru ssh-1.2.30.org/randoms.c ssh-1.2.30/randoms.c
+--- ssh-1.2.30.org/randoms.c	Wed Jul  5 15:26:48 2000
++++ ssh-1.2.30/randoms.c	Mon Aug 21 20:50:06 2000
+@@ -138,6 +138,21 @@
+      collecting more noise when we have spent 30 seconds real time; on a large
+      system a single executed command is probably enough, whereas on small
+      systems we must use all possible noise sources. */
++#if defined (__OS2__)
++  random_get_noise_from_command(state, uid, "pstat /c 2>nul");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "pstat /s 2>nul");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "pstat /l 2>null");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "pstat /m 2>nul");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "netstat -s 2>nul");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "netstat -m 2>nul");
++  if (time(NULL) - start_time < 30)
++    random_get_noise_from_command(state, uid, "netstat -i 2>nul");
++#else
+   random_get_noise_from_command(state, uid, "ps laxww 2>/dev/null");
+   if (time(NULL) - start_time < 30)
+     random_get_noise_from_command(state, uid, "ps -al 2>/dev/null");
+@@ -151,6 +166,7 @@
+     random_get_noise_from_command(state, uid, "netstat -an 2>/dev/null");
+   if (time(NULL) - start_time < 30)
+     random_get_noise_from_command(state, uid, "netstat -in 2>/dev/null");
++#endif
+ 
+   /* Get other easily available noise. */
+   random_acquire_light_environmental_noise(state);
+diff -ru ssh-1.2.30.org/scp.c ssh-1.2.30/scp.c
+--- ssh-1.2.30.org/scp.c	Wed Jul  5 15:26:50 2000
++++ ssh-1.2.30/scp.c	Tue Aug 22 00:15:00 2000
+@@ -186,6 +186,10 @@
+ #define STDERR_FILENO 2
+ #endif
+ 
++#if HAVE_SPAWN
++#include <process.h>
++#endif
++
+ /* This is set to non-zero to enable verbose mode. */
+ int verbose = 0;
+ 
+@@ -276,19 +280,28 @@
+   close(reserved[0]);
+   close(reserved[1]);
+ 
++#if !HAVE_SPAWN
+   /* For a child to execute the command on the remote host using ssh. */
+   if (fork() == 0) 
++#endif
+     {
+       char *args[256];
+       unsigned int i, j;
+ 
+       /* Child. */
++#if HAVE_SPAWN
++      int old_stdin = dup(0);
++      int old_stdout = dup(1);
++#else
+       close(pin[1]);
+       close(pout[0]);
++#endif
+       dup2(pin[0], 0);
+       dup2(pout[1], 1);
++#if !HAVE_SPAWN
+       close(pin[0]);
+       close(pout[1]);
++#endif
+ 
+       i = 0;
+       args[i++] = ssh_program;
+@@ -335,6 +348,16 @@
+       args[i++] = cmd;
+       args[i++] = NULL;
+ 
++#if HAVE_SPAWN
++      if (spawnvp (P_NOWAIT, ssh_program, args) < 0)
++        perror (ssh_program);
++      if (dup2 (old_stdin, 0) < 0)
++        perror ("dup2");
++      close (old_stdin);
++      if (dup2 (old_stdout, 1) < 0)
++        perror ("dup2");
++      close (old_stdout);
++#else
+       execvp(ssh_program, args);
+       if (errno == ENOENT)
+         {
+@@ -343,6 +366,7 @@
+         }
+       perror(ssh_program);
+       exit(1);
++#endif
+     }
+   /* Parent.  Close the other side, and return the local side. */
+   close(pin[0]);
+@@ -444,7 +468,16 @@
+           }
+         
+         if (!isatty(fileno(stdout)))
++          {
+             statistics = 0;
++#if defined (__OS2__)
++            setmode (fileno(stdout), O_BINARY);
++#endif
++          }
++#if defined (__OS2__)
++        if (!isatty(fileno(stdin)))
++            setmode (fileno(stdin), O_BINARY);
++#endif
+ 
+         fflag = tflag = 0;
+         while ((ch = getopt(argc, argv, "aAqQdfprtvBCL1c:i:P:o:S:")) != EOF)
+@@ -663,7 +696,10 @@
+                                     thost, targ);
+                         } else
+                                 (void)snprintf(bp, len,
+-                                    "exec %s%s %s -x -o'FallBackToRsh no' -o'ClearAllForwardings yes' -n %s %s %s '%s%s%s:%s'",
++#if !defined (__OS2__)
++                                    "exec "
++#endif
++                                    "%s%s %s -x -o'FallBackToRsh no' -o'ClearAllForwardings yes' -n %s %s %s '%s%s%s:%s'",
+                                     ssh_program, verbose ? " -v" : "", options,
+                                     argv[i], cmd, src,
+                                     tuser ? tuser : "", tuser ? "@" : "",
+@@ -703,7 +739,11 @@
+                         len = strlen(_PATH_CP) + strlen(argv[i]) +
+                             strlen(argv[argc - 1]) + 20;
+                         bp = xmalloc(len);
+-                        (void)snprintf(bp, len, "exec %s%s%s %s %s", _PATH_CP,
++                        (void)snprintf(bp, len,
++#if !defined (__OS2__)
++                            "exec "
++#endif
++                            "%s%s%s %s %s", _PATH_CP,
+                             iamrecursive ? " -r" : "", pflag ? " -p" : "",
+                             argv[i], argv[argc - 1]);
+                         if (verbose)
+@@ -756,29 +796,47 @@
+ 
+         for (indx = 0; indx < argc; ++indx) {
+                 name = argv[indx];
++#if defined (__OS2__)
++                if (stat(name, &stb) < 0) {
++syserr:                 run_err("%s: %s", name, strerror(errno));
++                        continue;
++                }
++                if ((stb.st_mode & S_IFMT) != S_IFDIR
++                 && (fd = open(name, O_RDONLY, 0)) < 0)
++                        goto syserr;
++#else
+                 if ((fd = open(name, O_RDONLY, 0)) < 0)
+                         goto syserr;
+                 if (fstat(fd, &stb) < 0) {
+ syserr:                 run_err("%s: %s", name, strerror(errno));
+                         goto next;
+                 }
++#endif
+                 switch (stb.st_mode & S_IFMT) {
+                 case S_IFREG:
+                         break;
+                 case S_IFDIR:
+                         if (iamrecursive) {
+                                 rsource(name, &stb);
++#if !defined (__OS2__)
+                                 goto next;
++#else
++                                continue;
++#endif
+                         }
+                         /* FALLTHROUGH */
+                 default:
+                         run_err("%s: not a regular file", name);
+                         goto next;
+                 }
++#if defined (__OS2__)
++                last = _getname (name);
++#else
+                 if ((last = strrchr(name, '/')) == NULL)
+                         last = name;
+                 else
+                         ++last;
++#endif
+                 if (pflag) {
+                         /*
+                          * Make it compatible with possible future
+@@ -914,11 +972,15 @@
+                 run_err("%s: %s", name, strerror(errno));
+                 return;
+         }
++#if defined (__OS2__)
++        last = _getname (name);
++#else
+         last = strrchr(name, '/');
+         if (last == 0)
+                 last = name;
+         else
+                 last++;
++#endif
+         if (pflag) {
+                 (void)snprintf(path, sizeof(path), "T%lu 0 %lu 0\n",
+                                (unsigned long)statp->st_mtime, 
+@@ -997,7 +1059,7 @@
+                 cp = buf;
+                 if (read(remin, cp, 1) <= 0)
+                         return;
+-                if (*cp++ == '\n')
++                if (*cp == '\n' || *cp++ == '\r')
+                         SCREWUP("unexpected <newline>");
+                 do {
+                         if (read(remin, &ch, sizeof(ch)) != sizeof(ch))
+@@ -1080,7 +1142,11 @@
+                         if (need > cursize)
+                           namebuf = xmalloc(need);
+                         (void)snprintf(namebuf, need, "%s%s%s", targ,
++#if defined (__OS2__)
++                            *_getname (targ) ? "/" : "", cp);
++#else
+                             *targ ? "/" : "", cp);
++#endif
+                         np = namebuf;
+                 } else
+                         np = targ;
+@@ -1139,10 +1205,14 @@
+                     ratebs = 0.0;
+                     stat_starttime = time(NULL);
+ 
++#if defined (__OS2__)
++                    statslast = _getname (np);
++#else
+                     if ((statslast = strrchr(np, '/')) == NULL)
+                       statslast = np;
+                     else
+                       ++statslast;
++#endif
+                   }
+ #endif /* WITH_SCP_STATS */
+                 for (count = i = 0; i < size; i += 4096) {
+@@ -1219,6 +1289,7 @@
+                         wrerr = DISPLAYED;
+                 }
+ #endif /* HAVE_FTRUNCATE */
++#ifndef __OS2__
+                 if (pflag) {
+                         if (exists || omode != mode)
+ #ifdef HAVE_FCHMOD
+@@ -1238,6 +1309,7 @@
+                                         run_err("%s: set mode: %s",
+                                             np, strerror(errno));
+                 }
++#endif /* __OS2__ */
+                 (void)close(ofd);
+                 (void)response();
+                 if (setimes && wrerr == NO) {
+@@ -1375,9 +1447,17 @@
+                 return (0);
+ 
+         for (; *cp; ++cp) {
+-                if (*cp == ':')
++                if (*cp == ':'
++#if defined (__OS2__)
++                 && cp [1] != '/' && cp [1] != '\\'
++#endif
++                   )
+                         return (cp);
+-                if (*cp == '/')
++                if (*cp == '/'
++#if defined (__OS2__)
++                 || *cp == '\\'
++#endif
++                   )
+                         return (0);
+         }
+         return (0);
+@@ -1411,7 +1491,11 @@
+                 if (c & 0200)
+                         goto bad;
+                 if (!isalpha(c) && !isdigit(c) && c != '_' && c != '-' &&
+-                    c != '@' && c != '%' && c != '.' && c != '/')
++                    c != '@' && c != '%' && c != '.' && c != '/'
++#if defined (__OS2__)
++                    && c != '\\' && c != ':'
++#endif
++                   )
+                         goto bad;
+         } while (*++cp);
+         return (1);
+diff -ru ssh-1.2.30.org/signals.c ssh-1.2.30/signals.c
+--- ssh-1.2.30.org/signals.c	Wed Jul  5 15:26:50 2000
++++ ssh-1.2.30/signals.c	Mon Aug 21 20:50:08 2000
+@@ -82,12 +82,22 @@
+   for (sig = 1; sig < NSIG; sig++)
+     switch (sig)
+       {
++#ifdef SIGSTOP
+       case SIGSTOP:
++#endif
++#ifdef SIGTSTP
+       case SIGTSTP:
++#endif
++#ifdef SIGCONT
+       case SIGCONT:
++#endif
+       case SIGCHLD:
++#ifdef SIGTTIN
+       case SIGTTIN:
++#endif
++#ifdef SIGTTOU
+       case SIGTTOU:
++#endif
+ #ifdef SIGIO
+       case SIGIO:
+ #endif
+diff -ru ssh-1.2.30.org/ssh-agent.c ssh-1.2.30/ssh-agent.c
+--- ssh-1.2.30.org/ssh-agent.c	Wed Jul  5 15:26:50 2000
++++ ssh-1.2.30/ssh-agent.c	Tue Aug 22 02:15:58 2000
+@@ -703,6 +703,8 @@
+      command. Also, if something fails before fork, just execute the
+      command and don't bother forking the child. */
+   
++#if !defined (__OS2__)
++
+   /* Check that the per-user socket directory either doesn't exist
+      or has good modes */
+   
+@@ -726,11 +728,13 @@
+               socket_dir_name);
+       goto fail_socket_setup;
+     }
++#endif
+ 
+   snprintf(socket_name, sizeof(socket_name),
+            SSH_AGENT_SOCKET_DIR"/"SSH_AGENT_SOCKET,
+            pw->pw_name, (int)getpid());
+ 
++#if !defined (__OS2__)
+   /* Check that socket doesn't exist */
+   ret = stat(socket_name, &st);
+   if (ret != -1 && errno != ENOENT)
+@@ -740,6 +744,7 @@
+               socket_name);
+       goto fail_socket_setup;
+     }
++#endif
+   sock = socket(AF_UNIX, SOCK_STREAM, 0);
+   if (sock < 0)
+     {
+@@ -755,12 +760,14 @@
+       close(sock);
+       goto fail_socket_setup;
+     }
++#if !defined (__OS2__)
+   if (chmod(socket_name, 0700) < 0)
+     {
+       perror("chmod");
+       close(sock);
+       goto fail_socket_setup;
+     }
++#endif
+   if (listen(sock, 5) < 0)
+     {
+       perror("listen");
+diff -ru ssh-1.2.30.org/ssh.c ssh-1.2.30/ssh.c
+--- ssh-1.2.30.org/ssh.c	Wed Jul  5 15:26:50 2000
++++ ssh-1.2.30/ssh.c	Tue Aug 22 00:34:16 2000
+@@ -325,6 +325,9 @@
+   fprintf(stderr, "  -C          Enable compression.\n");
+   fprintf(stderr, "  -g          Allow remote hosts to connect to local port forwardings\n");
+   fprintf(stderr, "  -o 'option' Process the option as if it was read from a configuration file.\n");
++#ifdef __OS2__
++  fprintf(stderr, "  -tc file    Use `file' as terminal configuration file (default = /etc/ssh_term)\n");
++#endif
+   exit(1);
+ }
+ 
+@@ -376,7 +379,12 @@
+   if (stdin_null_flag)
+     args[i++] = "-n";
+   if (binary_clean_flag)
+-    args[i++] = "-8";
++    args[i++] =
++#ifdef __OS2__
++      "-b";
++#else
++      "-8";
++#endif
+   if (buffer_len(command) > 0)
+     {
+       buffer_append(command, "\0", 1);
+@@ -418,6 +426,10 @@
+   struct winsize ws;
+ #endif /* SIGWINCH */
+ 
++#if defined (SSH_CLIENT_INIT)
++  SSH_CLIENT_INIT;
++#endif
++
+   /* Save the original real uid.  It will be needed later (uid-swapping may
+      clobber the real uid).  */
+   original_real_uid = getuid();
+@@ -477,10 +489,15 @@
+   host = NULL;
+ 
+   /* If program name is not one of the standard names, use it as host name. */
++#if defined (__OS2__)
++  cp = av0 = _getname (av0);
++  _remext (strlwr (cp));
++#else
+   if (strchr(av0, '/'))
+     cp = strrchr(av0, '/') + 1;
+   else
+     cp = av0;
++#endif
+   if (strcmp(cp, "rsh") != 0 && strcmp(cp, "ssh") != 0 &&
+       strcmp(cp, "rlogin") != 0 && strcmp(cp, "slogin") != 0 &&
+       strcmp(cp, "ssh1") != 0 && strcmp(cp, "slogin1") != 0 &&
+@@ -900,7 +917,7 @@
+ 
+       /* Store window size in the packet. */
+ #ifdef SIGWINCH
+-      if (ioctl(fileno(stdin), TIOCGWINSZ, &ws) < 0)
++      if (tty_ioctl(fileno(stdin), TIOCGWINSZ, &ws) < 0)
+         memset(&ws, 0, sizeof(ws));
+       packet_put_int(ws.ws_row);
+       packet_put_int(ws.ws_col);
+@@ -941,7 +958,12 @@
+ 
+ #ifdef XAUTH_PATH
+       /* Try to get Xauthority information for the display. */
+-      snprintf(line, sizeof(line), "%.100s list %.200s 2>/dev/null", 
++      snprintf(line, sizeof(line), "%.100s list %.200s "
++#ifdef __OS2__
++        "2>\\dev\\nul", 
++#else
++        "2>/dev/null", 
++#endif
+               options.xauth_path, getenv("DISPLAY"));
+       /* Note that we are already running on the user's uid. */
+       uf = userfile_popen(original_real_uid, line, "r");
+diff -ru ssh-1.2.30.org/ssh.h ssh-1.2.30/ssh.h
+--- ssh-1.2.30.org/ssh.h	Wed Jul  5 15:26:50 2000
++++ ssh-1.2.30/ssh.h	Tue Aug 22 02:12:48 2000
+@@ -291,7 +291,11 @@
+    SSH_AGENT_SOCKET_DIR can be changed to something else ("/tmp/.ssh/ssh-%s"
+    for example), but only the last directory in the path will be
+    dynamically created and deleted by sshd and ssh-agent. */
++#ifdef __OS2__
++#define SSH_AGENT_SOCKET_DIR    "/socket/ssh-%.50s"
++#else
+ #define SSH_AGENT_SOCKET_DIR    "/tmp/ssh-%.50s"
++#endif
+ #define SSH_AGENT_SOCKET        "ssh-%d-agent"
+ 
+ /* Name of the environment variable containing the pathname of the
+diff -ru ssh-1.2.30.org/sshconnect.c ssh-1.2.30/sshconnect.c
+--- ssh-1.2.30.org/sshconnect.c	Wed Jul  5 15:26:52 2000
++++ ssh-1.2.30/sshconnect.c	Mon Aug 21 20:50:08 2000
+@@ -347,6 +347,7 @@
+ 
+   /* If we are running as root and want to connect to a privileged port,
+      bind our own socket to a privileged port. */
++#if !defined (__OS2__)
+   if (privileged)
+     {
+       struct sockaddr_in sin;
+@@ -381,6 +382,7 @@
+       debug("Allocated local port %d.", p);
+     }
+   else
++#endif
+     { 
+       /* Just create an ordinary socket on arbitrary port.  */
+       sock = socket(AF_INET, SOCK_STREAM, 0);
+diff -ru ssh-1.2.30.org/sshd.c ssh-1.2.30/sshd.c
+--- ssh-1.2.30.org/sshd.c	Wed Jul  5 15:26:52 2000
++++ ssh-1.2.30/sshd.c	Tue Aug 22 01:58:06 2000
+@@ -533,11 +533,17 @@
+ #include <login_cap.h>
+ #endif
+ 
++#if HAVE_SPAWN
++#include <process.h>
++#endif
++
++#ifndef DEFAULT_SHELL
+ #ifdef _PATH_BSHELL
+ #define DEFAULT_SHELL           _PATH_BSHELL
+ #else
+ #define DEFAULT_SHELL           "/bin/sh"
+ #endif
++#endif
+ 
+ #ifndef DEFAULT_PATH
+ #ifdef _PATH_USERPATH
+@@ -663,7 +669,7 @@
+ void do_exec_no_pty(const char *command, struct passwd *pw,
+                     const char *display, const char *auth_proto,
+                     const char *auth_data);
+-void do_child(const char *command, struct passwd *pw, const char *term,
++int do_child(const char *command, struct passwd *pw, const char *term,
+               const char *display, const char *auth_proto,
+               const char *auth_data, const char *ttyname);
+ 
+@@ -795,6 +801,9 @@
+   else
+     av0 = av[0];
+ 
++  /* Initialize config_file_name in the case it is not a constant */
++  config_file_name = SERVER_CONFIG_FILE;
++
+   /* Prevent core dumps to avoid revealing sensitive information. */
+   signals_prevent_core();
+ 
+@@ -961,6 +970,7 @@
+       int fd;
+ #endif /* TIOCNOTTY */
+ 
++#if !defined (__OS2__)
+       /* Fork, and have the parent exit.  The child becomes the server. */
+       if (fork())
+         exit(0);
+@@ -987,6 +997,7 @@
+         error("setsid: %.100s", strerror(errno));
+ #endif
+ #endif /* HAVE_SETSID */
++#endif /* __OS2__ */
+     }
+ #endif /* HAVE_DAEMON */
+     
+@@ -2895,6 +2906,7 @@
+ 
+           /* Allocate a pty and open it. */
+           if (!pty_allocate(&ptyfd, &ttyfd, ttyname))
++#if !defined (__OS2__)
+             {
+               packet_get_all();
+               error("Failed to allocate pty.");
+@@ -3010,6 +3022,12 @@
+                   goto fail;
+                 }
+             }
++#else /* OS2 */
++            {
++              error("Failed to allocate pty.");
++              ptyfd = ttyfd = 0;
++            }
++#endif /* OS2 */
+ 
+           /* Get TERM from the packet.  Note that the value may be of arbitrary
+              length. */
+@@ -3027,6 +3045,11 @@
+           /* Get tty modes from the packet. */
+           tty_parse_modes(ttyfd);
+ 
++#if defined (__OS2__)
++          if (!ptyfd)
++            goto fail;
++#endif
++
+           /* Indicate that we now have a pty. */
+           have_pty = 1;
+           break;
+@@ -3055,6 +3078,7 @@
+           if (display)
+             packet_disconnect("Protocol error: X11 display already set.");
+ 
++#ifndef __OS2__
+           /* Check whether we have xauth installed on this machine (in case
+              the binary was moved from elsewhere). */
+           if (stat(options.xauth_path, &st) < 0)
+@@ -3063,6 +3087,7 @@
+               packet_send_debug("Remote host has no X11 installed.");
+               goto fail;
+             }
++#endif
+ 
+           /* Process the request. */
+           proto = packet_get_string(NULL);
+@@ -3201,6 +3226,15 @@
+     }
+ }
+ 
++#if defined (__OS2__)
++void child_cleanup_proc(void *context)
++{
++    int pid = (int)context;
++    /*kill (pid, SIGTERM);*/
++    DosKillProcess (0/*DKP_PROCESSTREE*/, pid);
++}
++#endif
++
+ /* This is called to fork and execute a command when we have no tty.  This
+    will call do_child from the child, and server_loop from the parent after
+    setting up file descriptors and such. */
+@@ -3219,6 +3253,9 @@
+   const char *hostname = get_canonical_hostname();
+   const char *ttyname = NULL;
+ #endif /* HAVE_SIA */
++#if HAVE_SPAWN
++  int old_stdin, old_stdout, old_stderr;
++#endif
+ 
+ #ifdef USE_PIPES
+   /* Allocate pipes for communicating with the program. */
+@@ -3237,6 +3274,7 @@
+   userfile_uninit();
+   
+   /* Fork the child. */
++#if !HAVE_SPAWN
+   if ((pid = fork()) == 0)
+     {
+       /* Child.  Reinitialize the log since the pid has changed. */
+@@ -3251,26 +3289,39 @@
+         error("setsid: %.100s", strerror(errno));
+ #endif
+ #endif /* HAVE_SETSID */
++#endif /* !HAVE_SPAWN */
+ 
+ #ifdef USE_PIPES
+       /* Redirect stdin.  We close the parent side of the socket pair,
+          and make the child side the standard input. */
++#if HAVE_SPAWN
++      old_stdin = dup (0);
++      old_stdout = dup (1);
++      old_stderr = dup (2);
++#else
+       close(pin[1]);
++#endif
+       if (dup2(pin[0], 0) < 0)
+         perror("dup2 stdin");
++#if !HAVE_SPAWN
+       close(pin[0]);
+       
+       /* Redirect stdout. */
+       close(pout[0]);
++#endif
+       if (dup2(pout[1], 1) < 0)
+         perror("dup2 stdout");
++#if !HAVE_SPAWN
+       close(pout[1]);
+ 
+       /* Redirect stderr. */
+       close(perr[0]);
++#endif
+       if (dup2(perr[1], 2) < 0)
+         perror("dup2 stderr");
++#if !HAVE_SPAWN
+       close(perr[1]);
++#endif
+ #else /* USE_PIPES */
+       /* Redirect stdin, stdout, and stderr.  Stdin and stdout will use the
+          same socket, as some programs (particularly rdist) seem to depend
+@@ -3314,17 +3365,34 @@
+ #endif /* HAVE_SIA */
+ 
+       /* Do processing for the child (exec command etc). */
+-      do_child(command, pw, NULL, display, auth_proto, auth_data, NULL);
++      pid = do_child(command, pw, NULL, display, auth_proto, auth_data, NULL);
++#if HAVE_SPAWN
++      if (dup2 (old_stdin, fileno (stdin)) < 0)
++        perror("dup2 stdin");
++      close (old_stdin);
++      if (dup2 (old_stdout, fileno (stdout)) < 0)
++        perror("dup2 stdout");
++      close (old_stdout);
++      if (dup2 (old_stderr, fileno (stderr)) < 0)
++        perror("dup2 stderr");
++      close (old_stderr);
++#else
+       /*NOTREACHED*/
+     }
+   if (pid < 0)
+     packet_disconnect("fork failed: %.100s", strerror(errno));
++#endif
+ #ifdef USE_PIPES
+   /* We are the parent.  Close the child sides of the pipes. */
+   close(pin[0]);
+   close(pout[1]);
+   close(perr[1]);
+ 
++#if defined (__OS2__)
++  /* Add a cleanup function to kill the child. */
++  fatal_add_cleanup(child_cleanup_proc, (void *)pid);
++#endif
++
+   /* Enter the interactive session. Note server_loop will close all
+      filedescriptors.  */
+   server_loop(pid, pin[1], pout[0], perr[0], NULL);
+@@ -3368,7 +3436,7 @@
+       
+       /* Release the pseudo-tty. */
+       pty_release(cu->ttyname);
+-      
++
+       cu->alread_cleaned = 1;
+     }
+ }
+@@ -3399,6 +3467,9 @@
+ #if defined (__bsdi__) && _BSDI_VERSION >= 199510 
+   struct timeval tp;
+ #endif /*  __bsdi__ && _BSDI_VERSION >= 199510 */
++#if HAVE_SPAWN
++  int old_stdin, old_stdout, old_stderr;
++#endif
+ 
+   /* We no longer need the child running on user's privileges. */
+   userfile_uninit();
+@@ -3416,6 +3487,7 @@
+     last_login_time = get_last_login_time(pw->pw_uid, pw->pw_name,
+                                           buf, sizeof(buf));
+ 
++#if !HAVE_SPAWN
+   /* Fork the child. */
+   if ((pid = fork()) == 0)
+     { 
+@@ -3436,6 +3508,11 @@
+ 
+       /* Close the master side of the pseudo tty. */
+       close(ptyfd);
++#else
++      old_stdin = dup (fileno(stdin));
++      old_stdout = dup (fileno(stdout));
++      old_stderr = dup (fileno(stderr));
++#endif /* !HAVE_SPAWN */
+ 
+       /* Make the pseudo tty our controlling tty. */
+       pty_make_controlling_tty(&ttyfd, ttyname);
+@@ -3453,7 +3530,9 @@
+         error("dup2 stdin failed: %.100s", strerror(errno));
+ 
+       /* Close the extra descriptor for the pseudo tty. */
++#if !HAVE_SPAWN
+       close(ttyfd);
++#endif
+ 
+ #ifdef HAVE_SIA
+ #ifdef USELOGIN
+@@ -3610,11 +3689,23 @@
+ #endif
+ 
+       /* Do common processing for the child, such as execing the command. */
+-      do_child(command, pw, term, display, auth_proto, auth_data, ttyname);
++      pid = do_child(command, pw, term, display, auth_proto, auth_data, ttyname);
++#if HAVE_SPAWN
++      if (dup2 (old_stdin, fileno (stdin)) < 0)
++        perror("dup2 stdin");
++      close (old_stdin);
++      if (dup2 (old_stdout, fileno (stdout)) < 0)
++        perror("dup2 stdout");
++      close (old_stdout);
++      if (dup2 (old_stderr, fileno (stderr)) < 0)
++        perror("dup2 stderr");
++      close (old_stderr);
++#else
+       /*NOTREACHED*/
+     }
+   if (pid < 0)
+     packet_disconnect("fork failed: %.100s", strerror(errno));
++#endif
+   /* Parent.  Close the slave side of the pseudo tty. */
+   close(ttyfd);
+   
+@@ -3784,6 +3875,7 @@
+   if (def != NULL && strcmp(def, "YES") == 0)
+     child_set_env(env, envsize, "SHELL", user_shell);
+ 
++#if !defined (__OS2__)
+   /* Set PATH from SUPATH if we are logging in as root, and PATH
+      otherwise.  If neither of these exists, we use the default ssh
+      path. */
+@@ -3793,6 +3885,7 @@
+     def = child_get_env(defenv, "PATH");
+   if (def != NULL)
+     {
++      child_set_env(env, envsize, "PATH", def);
+       char *newpath;
+       newpath = xmalloc(strlen(def) + sizeof(SSH_BINDIR) + 2);
+       snprintf(newpath, strlen(def) + sizeof(SSH_BINDIR) + 2,
+@@ -3802,6 +3895,7 @@
+     }
+   else
+     child_set_env(env, envsize, "PATH", DEFAULT_PATH ":" SSH_BINDIR);
++#endif
+ 
+   /* Set TZ if TIMEZONE is defined and we haven't inherited a value
+      for TZ. */
+@@ -3965,9 +4059,10 @@
+ 
+ /* Performs common processing for the child, such as setting up the 
+    environment, closing extra file descriptors, setting the user and group 
+-   ids, and executing the command or shell. */
++   ids, and executing the command or shell.
++   If we're using spawn() the function returns the pid of spawned process */
+ 
+-void do_child(const char *command, struct passwd *pw, const char *term,
++int do_child(const char *command, struct passwd *pw, const char *term,
+               const char *display, const char *auth_proto, 
+               const char *auth_data, const char *ttyname)
+ {
+@@ -3986,6 +4081,9 @@
+   char *user_shell;
+   char *remote_ip;
+   int remote_port;
++#if HAVE_SPAWN
++  int pid;
++#endif
+ #if defined (__FreeBSD__) && defined(HAVE_LOGIN_CAP_H)
+   login_cap_t *lc;
+   char *real_shell;
+@@ -4092,6 +4190,7 @@
+   remote_ip = xstrdup(get_remote_ipaddr());
+   remote_port = get_remote_port();
+ 
++#if !HAVE_SPAWN
+   /* Close the connection descriptors; note that this is the child, and the 
+      server will still have the socket open, and it is important that we
+      do not shutdown it.  Note that the descriptors cannot be closed before
+@@ -4124,6 +4223,7 @@
+ 
+   /* Clear the data structure, just in case. */
+   memset(&sensitive_data, 0, sizeof(sensitive_data));
++#endif /* !HAVE_SPAWN */
+ 
+ #ifdef USELOGIN
+   if (command != NULL || !options.use_login)
+@@ -4219,6 +4319,7 @@
+             }
+ #endif /* HAVE_INITGROUPS */
+           
++#if !HAVE_SPAWN
+           /* Close any extra open file descriptors so that we don\'t have them
+              hanging around in clients. Note that we want to do this after
+              initgroups, because at least on Solaris 2.3 it leaves file
+@@ -4235,7 +4336,7 @@
+               close(i);
+             }
+ #endif /* HAVE_SIA */
+-          
++#endif /* !HAVE_SPAWN */
+           /* At this point, this process should no longer be holding any
+              confidential information, as changing uid below will permit the
+              user to attach with a debugger on some machines. */
+@@ -4275,16 +4376,20 @@
+             fatal("setuid %d: %.100s", (int)user_uid, strerror(errno));
+         }
+       
++#if !defined (__OS2__)
+       if (getuid() != user_uid || geteuid() != user_uid)
+         fatal("Failed to set uids to %d.", (int)user_uid);
++#endif
+ #endif /* HAVE_SIA */
+ #endif /* (_BSDI_VERSION > 199510) */
+ #endif /* HAVE_LOGIN_CAP_H */
+     }
+   
++#if !HAVE_SPAWN  
+   /* Reset signals to their default settings before starting the user
+      process. */
+   signals_reset();
++#endif
+ 
+   /* Get the shell from the password data.  An empty shell field is legal,
+      and means /bin/sh. */
+@@ -4299,8 +4404,24 @@
+   if (env == NULL)
+     {
+       envsize = 100;
++
++#if defined (__OS2__)
++      /* On OS/2 just copy the environment to child process */
++      if (environ)
++        {
++          int i;
++          char **envptr;
++          for (envptr = environ; *envptr; envptr++)
++            envsize++;
++          env = xmalloc(envsize * sizeof(char *));
++          for (i = 0, envptr = environ; *envptr; i++, envptr++)
++            env [i] = xstrdup (*envptr);
++          env[i] = NULL;
++        }
++#else
+       env = xmalloc(envsize * sizeof(char *));
+       env[0] = NULL;
++#endif
+     }
+ 
+ #ifdef USELOGIN
+@@ -4313,7 +4434,9 @@
+       child_set_env(&env, &envsize, "LOGNAME", user_name);
+ 
+ #ifndef HAVE_LOGIN_CAP_H
++#if !defined (__OS2__)
+       child_set_env(&env, &envsize, "PATH", DEFAULT_PATH ":" SSH_BINDIR);
++#endif
+       
+ #ifdef MAIL_SPOOL_DIRECTORY
+       snprintf(buf, sizeof(buf),
+@@ -4569,7 +4692,7 @@
+                     cp = strchr(display, ':');
+                     if (cp)
+                       {
+-#ifndef CRAY
++#if !defined (CRAY) && !defined (__OS2__)
+                         /* Cray xauth cannot take host/unix:0 as displayname */
+                         fprintf(f, "add %.*s/unix%s %s %s\n",
+                                 cp - display, display, cp, auth_proto,
+@@ -4611,11 +4734,15 @@
+ #endif /* USELOGIN */
+     {
+       /* Get the last component of the shell name. */
++#ifdef __OS2__
++      cp = _getname (shell);
++#else
+       cp = strrchr(shell, '/');
+       if (cp)
+         cp++;
+       else
+         cp = shell;
++#endif
+     }
+   
+   /* If we have no command, execute the shell.  In this case, the shell name
+@@ -4667,7 +4794,18 @@
+           buf[sizeof(buf) - 1] = 0;
+           /* Execute the shell. */
+           argv[0] = buf;
+-          argv[1] = NULL;
++          i = 1;
++#ifdef __OS2__
++          /* If using a Unix-like shell, force interactive mode (even if no pty) */
++          if (strstr (cp, "sh"))
++            argv[i++] = "-i";
++#endif
++          argv[i] = NULL;
++#if HAVE_SPAWN
++          if ((pid = spawnvpe(P_NOWAIT, shell, argv, env)) < 0)
++            perror(shell);
++          return pid;
++#else
+ #if defined (__FreeBSD__) && defined(HAVE_LOGIN_CAP_H)
+           execve(real_shell, argv, env);
+ #else
+@@ -4676,6 +4814,7 @@
+           /* Executing the shell failed. */
+           perror(shell);
+           exit(1);
++#endif /* HAVE_SPAWN */
+         }
+ #ifdef USELOGIN
+       else
+@@ -4690,9 +4829,25 @@
+   /* Execute the command using the user's shell.  This uses the -c option
+      to execute the command. */
+   argv[0] = (char *)cp;
++#if defined (__OS2__)
++  if (strstr (argv[0], "CMD.")
++   || strstr (argv[0], "cmd.")
++   || strstr (argv[0], "4OS2.")
++   || strstr (argv[0], "4os2.")
++   || strstr (argv[0], "TNPIPE.")
++   || strstr (argv[0], "tnpipe."))
++    argv[1] = "/c";
++  else
++#endif
+   argv[1] = "-c";
+   argv[2] = (char *)command;
+   argv[3] = NULL;
++
++#if HAVE_SPAWN
++  if ((pid = spawnvpe(P_NOWAIT, shell, argv, env)) < 0)
++    perror(shell);
++  return pid;
++#else
+ #if defined (__FreeBSD__) && defined(HAVE_LOGIN_CAP_H)
+   execve(real_shell, argv, env);
+ #else
+@@ -4700,6 +4855,7 @@
+ #endif /* HAVE_LOGIN_CAP_H */
+   perror(shell);
+   exit(1);
++#endif /* HAVE_SPAWN */
+ }
+ 
+ #ifdef CRAY
+diff -ru ssh-1.2.30.org/userfile.c ssh-1.2.30/userfile.c
+--- ssh-1.2.30.org/userfile.c	Wed Jul  5 15:26:52 2000
++++ ssh-1.2.30/userfile.c	Mon Aug 21 22:13:04 2000
+@@ -183,11 +183,21 @@
+ #include <rpc/rpc.h>
+ #endif
+ 
++#ifdef HAVE_SPAWN
++#include <process.h>
++#endif
+ 
+ #if defined (__FreeBSD__) && defined(HAVE_LOGIN_CAP_H)
+ #include <login_cap.h>
+ #endif
+ 
++#if defined (__OS2__)
++/* We don't want the complex file access scheme in single-user OSes */
++#define DIRECT_USERFILES_ACCESS
++#endif
++
++#ifndef DIRECT_USERFILES_ACCESS
++
+ /* Protocol message types. */
+ #define USERFILE_OPEN           1
+ #define USERFILE_OPEN_REPLY     2
+@@ -332,6 +342,8 @@
+           type, expected_type);
+ }
+ 
++#endif /* DIRECT_USERFILES_ACCESS */
++
+ /* Forks and execs the given command.  Returns a file descriptor for
+    communicating with the program, or -1 on error.  The program will
+    be run with empty environment to avoid LD_LIBRARY_PATH and similar
+@@ -340,50 +352,33 @@
+ int do_popen(const char *command, const char *type)
+ {
+   int fds[2];
+-  int pid, i, j;
++  int i, j, pid;
+   char *args[100];
+   char *env[100];
+   extern char **environ;
++#if HAVE_SPAWN
++  int old_stdin, old_stdout;
++#endif
+   
+   if (pipe(fds) < 0)
+     fatal("pipe: %.100s", strerror(errno));
+   
+-  pid = fork();
+-  if (pid < 0)
+-    fatal("fork: %.100s", strerror(errno));
+-  
+-  if (pid == 0)
+-    { /* Child */
+-
+-      /* Close pipes to the parent; we do not wish to disclose them to a
+-         random user program. */
+-      close(userfile_fromparent);
+-      close(userfile_toparent);
+-
+-      /* Set up file descriptors. */
+-      if (type[0] == 'r')
+-        {
+-          if (dup2(fds[1], 1) < 0)
+-            perror("dup2 1");
+-        }
+-      else
+-        {
+-          if (dup2(fds[0], 0) < 0)
+-            perror("dup2 0");
+-        }
+-      close(fds[0]);
+-      close(fds[1]);
+-
+       /* Build argument vector. */
+       i = 0;
++#if defined (__OS2__)
++      args[i++] = getenv ("COMSPEC");
++      args[i++] = "/c";
++#else
+       args[i++] = "/bin/sh";
+       args[i++] = "-c";
++#endif
+       args[i++] = (char *)command;
+       args[i++] = NULL;
+ 
+       /* Prune environment to remove any potentially dangerous variables. */
+       i = 0;
+       for (j = 0; environ[j] && i < sizeof(env)/sizeof(env[0]) - 1; j++)
++#if !defined (__OS2__)
+         if (strncmp(environ[j], "HOME=", 5) == 0 ||
+             strncmp(environ[j], "USER=", 5) == 0 ||
+             strncmp(environ[j], "HOME=", 5) == 0 ||
+@@ -397,12 +392,70 @@
+             strncmp(environ[j], "PRINTER=", 8) == 0 ||
+             strncmp(environ[j], "XAUTHORITY=", 11) == 0 ||
+             strncmp(environ[j], "TERMCAP=", 8) == 0)
++#endif /* OS2 */
+           env[i++] = environ[j];
+       env[i] = NULL;
+ 
++#if HAVE_SPAWN
++  /* Save stdin and stdout */
++  old_stdin = dup (STDIN_FILENO);
++  old_stdout = dup (STDOUT_FILENO);
++
++  if (type[0] == 'r')
++    {
++      if (dup2 (fds[1], STDOUT_FILENO) < 0)
++        fatal("dup2: %.100s", strerror(errno));
++    }
++  else
++    {
++      if (dup2 (fds[0], STDIN_FILENO) < 0)
++        fatal("dup2: %.100s", strerror(errno));
++    }
++
++  pid = spawnvpe (P_NOWAIT, args [0], args, env);
++  if (pid < 0)
++    fatal("spawn %.100s failed: %.100s", args [0], strerror(errno));
++
++  /* Restore stdin and stdout */
++  if (dup2 (old_stdin, STDIN_FILENO) < 0)
++    fatal("dup2: %.100s", strerror(errno));
++  if (close (old_stdin) < 0)
++    fatal("close: %.100s", strerror(errno));
++  if (dup2 (old_stdout, STDOUT_FILENO) < 0)
++    fatal("dup2: %.100s", strerror(errno));
++  if (close (old_stdout) < 0)
++    fatal("close: %.100s", strerror(errno));
++#else
++  pid = fork();
++  if (pid < 0)
++    fatal("fork: %.100s", strerror(errno));
++  
++  if (pid == 0)
++    { /* Child */
++
++      /* Close pipes to the parent; we do not wish to disclose them to a
++         random user program. */
++      close(userfile_fromparent);
++      close(userfile_toparent);
++
++      /* Set up file descriptors. */
++      if (type[0] == 'r')
++        {
++          if (dup2(fds[1], 1) < 0)
++            perror("dup2 1");
++        }
++      else
++        {
++          if (dup2(fds[0], 0) < 0)
++            perror("dup2 0");
++        }
++      close(fds[0]);
++      close(fds[1]);
++
+       execve("/bin/sh", args, env);
+       fatal("execv /bin/sh failed: %.100s", strerror(errno));
+     }
++#endif
+ 
+   /* Parent. */
+   if (type[0] == 'r')
+@@ -417,6 +470,8 @@
+     }
+ }
+ 
++#ifndef DIRECT_USERFILES_ACCESS
++
+ /* This function is the main loop of the child.  This never returns. */
+ 
+ static void userfile_child_server(void)
+@@ -591,6 +646,8 @@
+     }
+ }
+ 
++#endif /* DIRECT_USERFILES_ACCESS */
++
+ /* Initializes reading as a user.  Before calling this, I/O may only be
+    performed as the user that is running the current program (current
+    effective uid).  SIGPIPE should be set to ignored before this call.
+@@ -600,6 +657,7 @@
+ void userfile_init(const char *username, uid_t uid, gid_t gid,
+                    void (*cleanup_callback)(void *), void *context)
+ {
++#ifndef DIRECT_USERFILES_ACCESS
+   int fds[2], pid;
+ 
+   if (userfile_initialized)
+@@ -671,6 +729,7 @@
+ 
+   /* Enter the server main loop. */
+   userfile_child_server();
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Closes any open pipes held by userfile.  This should be called
+@@ -678,11 +737,13 @@
+ 
+ void userfile_close_pipes(void)
+ {
++#ifndef DIRECT_USERFILES_ACCESS
+   if (!userfile_initialized)
+     return;
+   userfile_initialized = 0;
+   close(userfile_fromchild);
+   close(userfile_tochild);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Stops reading files as an ordinary user.  It is not an error to call
+@@ -690,6 +751,7 @@
+ 
+ void userfile_uninit(void)
+ {
++#ifndef DIRECT_USERFILES_ACCESS
+   int status;
+ 
+   if (!userfile_initialized)
+@@ -698,6 +760,7 @@
+   userfile_close_pipes();
+ 
+   wait(&status);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Data structure for UserFiles. */
+@@ -741,12 +804,15 @@
+ {
+   int handle;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
+     {
++#endif /* DIRECT_USERFILES_ACCESS */
+       handle = open(path, flags, mode);
+       if (handle < 0)
+         return NULL;
+       return userfile_make_handle(USERFILE_LOCAL, handle);
++#ifndef DIRECT_USERFILES_ACCESS
+     }
+ 
+   if (!userfile_initialized)
+@@ -769,6 +835,7 @@
+     return NULL;
+ 
+   return userfile_make_handle(USERFILE_REMOTE, handle);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Closes the userfile handle.  Returns >= 0 on success, and < 0 on error. */
+@@ -784,6 +851,7 @@
+       xfree(uf);
+       return ret;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+     case USERFILE_REMOTE:
+       userfile_packet_start(USERFILE_CLOSE);
+       buffer_put_int(&packet, uf->handle);
+@@ -794,6 +862,7 @@
+ 
+       xfree(uf);
+       return ret;
++#endif /* DIRECT_USERFILES_ACCESS */
+ 
+     default:
+       fatal("userfile_close: type %d", uf->type);
+@@ -824,6 +893,7 @@
+       uf->buf_last = ret;
+       break;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+     case USERFILE_REMOTE:
+       userfile_packet_start(USERFILE_READ);
+       buffer_put_int(&packet, uf->handle);
+@@ -841,6 +911,7 @@
+       uf->buf_first = 0;
+       uf->buf_last = len;
+       break;
++#endif /* DIRECT_USERFILES_ACCESS */
+ 
+     default:
+       fatal("userfile_fill: type %d", uf->type);
+@@ -902,6 +973,7 @@
+     case USERFILE_LOCAL:
+       return write(uf->handle, buf, len);
+       
++#ifndef DIRECT_USERFILES_ACCESS
+     case USERFILE_REMOTE:
+       ucp = buf;
+       for (offset = 0; offset < len; )
+@@ -924,6 +996,7 @@
+             break;
+         }
+       return offset;
++#endif /* DIRECT_USERFILES_ACCESS */
+ 
+     default:
+       fatal("userfile_write: type %d", uf->type);
+@@ -971,6 +1044,7 @@
+     case USERFILE_LOCAL:
+       return lseek(uf->handle, offset, whence);
+       
++#ifndef DIRECT_USERFILES_ACCESS
+     case USERFILE_REMOTE:
+       userfile_packet_start(USERFILE_LSEEK);
+       buffer_put_int(&packet, uf->handle);
+@@ -980,6 +1054,7 @@
+ 
+       userfile_packet_read(USERFILE_LSEEK_REPLY);
+       return buffer_get_int(&packet);
++#endif
+ 
+     default:
+       fatal("userfile_lseek: type %d", uf->type);
+@@ -993,9 +1068,12 @@
+ int userfile_mkdir(uid_t uid, const char *path, mode_t mode)
+ {
+   /* Perform directly if with current effective uid. */
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
++#endif /* DIRECT_USERFILES_ACCESS */
+     return mkdir(path, mode);
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if (!userfile_initialized)
+     fatal("userfile_mkdir with uid %d", (int)uid);
+   
+@@ -1009,6 +1087,7 @@
+ 
+   userfile_packet_read(USERFILE_MKDIR_REPLY);
+   return buffer_get_int(&packet);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Performs stat() using the given uid. */
+@@ -1018,9 +1097,12 @@
+   int ret;
+ 
+   /* Perform directly if with current effective uid. */
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
++#endif /* DIRECT_USERFILES_ACCESS */
+     return stat(path, st);
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if (!userfile_initialized)
+     fatal("userfile_stat with uid %d", (int)uid);
+   
+@@ -1036,6 +1118,7 @@
+   buffer_get(&packet, (char *)st, sizeof(*st));
+ 
+   return ret;
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Performs remove() using the given uid. */
+@@ -1043,9 +1126,12 @@
+ int userfile_remove(uid_t uid, const char *path)
+ {
+   /* Perform directly if with current effective uid. */
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
++#endif /* DIRECT_USERFILES_ACCESS */
+     return remove(path);
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if (!userfile_initialized)
+     fatal("userfile_remove with uid %d", (int)uid);
+   
+@@ -1058,6 +1144,7 @@
+ 
+   userfile_packet_read(USERFILE_REMOVE_REPLY);
+   return buffer_get_int(&packet);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Performs popen() on the given uid; returns a file from where the output
+@@ -1068,12 +1155,15 @@
+ {
+   int handle;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
+     {
++#endif /* DIRECT_USERFILES_ACCESS */
+       handle = do_popen(command, type);
+       if (handle < 0)
+         return NULL;
+       return userfile_make_handle(USERFILE_LOCAL, handle);
++#ifndef DIRECT_USERFILES_ACCESS
+     }
+ 
+   if (!userfile_initialized)
+@@ -1095,6 +1185,7 @@
+     return NULL;
+ 
+   return userfile_make_handle(USERFILE_REMOTE, handle);
++#endif /* DIRECT_USERFILES_ACCESS */
+ }
+ 
+ /* Performs pclose() on the given uid.  Returns <0 if an error occurs. */
+@@ -1113,6 +1204,7 @@
+       xfree(uf);
+       return ret;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+     case USERFILE_REMOTE:
+       userfile_packet_start(USERFILE_PCLOSE);
+       buffer_put_int(&packet, uf->handle);
+@@ -1123,6 +1215,7 @@
+ 
+       xfree(uf);
+       return ret;
++#endif /* DIRECT_USERFILES_ACCESS */
+ 
+     default:
+       fatal("userfile_close: type %d", uf->type);
+@@ -1139,8 +1232,10 @@
+   return phrase;
+ #else
+   /* Perform directly if with current effective uid. */
++#ifndef DIRECT_USERFILES_ACCESS
+   if (uid == geteuid())
+     {
++#endif /* DIRECT_USERFILES_ACCESS */
+       char buf[MAXNETNAMELEN + 1];
+       des_block block;
+       
+@@ -1159,6 +1254,7 @@
+             }
+         }
+       return phrase;
++#ifndef DIRECT_USERFILES_ACCESS
+     }
+   
+   if (!userfile_initialized)
+@@ -1178,16 +1274,17 @@
+       return NULL;
+     }
+   return phrase;
++#endif /* DIRECT_USERFILES_ACCESS */
+ #endif
+ }
+ 
+-
+ int userfile_check_owner_permissions(struct passwd *pw, const char *path)
+ {
+   struct stat st;
+   if (userfile_stat(pw->pw_uid, path, &st) < 0)
+     return 0;
+ 
++#ifndef DIRECT_USERFILES_ACCESS
+   if ((st.st_uid != UID_ROOT && st.st_uid != pw->pw_uid) ||
+ #ifdef ALLOW_GROUP_WRITEABILITY
+       (st.st_mode & 002) != 0
+@@ -1197,6 +1294,6 @@
+       )
+     return 0;
+   else
++#endif /* DIRECT_USERFILES_ACCESS */
+     return 1;
+ }
+-
